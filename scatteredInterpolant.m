@@ -116,7 +116,7 @@ classdef scatteredInterpolant
     Method = "linear" # interpolation method: linear, nearest, or natural
     ExtrapolationMethod = "linear" # extrapolation method: linear, nearest, or none
 ##  endproperties
-##  
+##
 ##  properties (Access = private, Hidden = true)
     dimension = 0 #values - 0 (empty), 2D, or 3D, from columns(Points)
     tri = [] #stored delaunay triangulation
@@ -130,12 +130,12 @@ classdef scatteredInterpolant
     function this = scatteredInterpolant (varargin) ##object constructor
       if (nargin == 0)
         ## do nothing, defaults already set, avoid other error checks.
-        
+
       elseif (nargin == 1 || nargin > 6)
         ## if not empty, varargin must contain 2-6 elements
         ##print_usage ();
         error ("scatteredInterpolant: invalid number of inputs");
-        
+
       elseif (isempty (varargin{1}) || isempty (varargin{2}))
         error ("scatteredInterpolant: input points and values cannot be empty");
 
@@ -203,7 +203,7 @@ classdef scatteredInterpolant
             if ((!ismatrix (varargin{1})) || (!any (size (varargin{1}, 2) == [2,3])))
               error ("scatterdInterpolant: Point input must be a 2 or 3 column array.");
             endif
-          
+
             ## already verified second input is column vector numeric input.
             %keyboard
             this.Points = varargin{1};
@@ -263,7 +263,7 @@ classdef scatteredInterpolant
     endfunction
 
     function v = subsref (this, S)
-      ## subsref eitheAr returns a property value, or if () does the actual interpolation  
+      ## subsref eitheAr returns a property value, or if () does the actual interpolation
       ## performing interpolation should return errors or warnings if in a bad state
       for idx = 1: numel(S)
         if (idx == 1)
@@ -275,7 +275,7 @@ classdef scatteredInterpolant
 
                 if isempty (this.Points)
                   ## no points supplied, empty return, no warning.
-                  ##NOT TRUE.  gives warning if a flag has been tripped. 
+                  ##NOT TRUE.  gives warning if a flag has been tripped.
                   v = [];
 
                 elseif (rows (this.Points) < (this.dimension + 1))
@@ -291,7 +291,7 @@ classdef scatteredInterpolant
               elseif (any (cellfun (@isempty, S(1).subs)))
                 ## any element of query empty, returns [] no matter dimensions
                 v = [];
-              
+
               elseif (! this.valid_points_vals)
                 ## unequal number of Points and values, throw error
                 error ("scatteredInterpolant: unequal number of points and values, cannot interpolate")
@@ -299,7 +299,7 @@ classdef scatteredInterpolant
               elseif (numel(S(1).subs) != this.dimension)
                 ## input dimension does not match dimensionality of points
                 error ("scatteredInterpolant: query points dimensionality must match interpolant")
-              
+
               else
 
               ## perform interpolation using stored triangulation according to methods
@@ -309,10 +309,10 @@ classdef scatteredInterpolant
                       case "none"
                       case "nearest"
 
-  ##  presize v, fill with NaN?, substitute nearest values                   
+  ##  presize v, fill with NaN?, substitute nearest values
   ##                      idx = dsearchn (x, tri, xi);
   ##                      valid = ! isnan (idx);
-  ##                      yi(valid) = y(idx(valid));                    
+  ##                      yi(valid) = y(idx(valid));
   ##                    case "linear"
                     endswitch
 
@@ -329,11 +329,11 @@ classdef scatteredInterpolant
                       case "linear"
                     endswitch
                 endswitch
-                
-                
+
+
                 v= magic(3);
-                  
-                  
+
+
 
                 ## if indexed with (), perform a grid interpolation.
                 ## if indexed with {}, return error using builtin (not defined for class)
@@ -349,12 +349,12 @@ classdef scatteredInterpolant
           ##        xi = S.subs{1};
           ##        yi = S.subs{2};
           ##      endif
-          ##      v = griddata(obj.Points(:,1), obj.Points(:,2), obj.Values, xi, yi, obj.Method);          
+          ##      v = griddata(obj.Points(:,1), obj.Points(:,2), obj.Values, xi, yi, obj.Method);
               endif
-      
+
             case {"."}
               #check if warnings should be shown first if points or triangulation in bad state
-              
+
               #if Points or Vals empty,
 
               v = builtin ("subsref", this, S(1));
@@ -394,10 +394,10 @@ classdef scatteredInterpolant
       # properties cannot be added. Points and values may be individually updated
       # to have a count mismatch without error. Error will be produced on attempted
       # interpolation.
-      # 
+      #
       # subsasgn should error on attempt to add new property, add invalid method, or
       # add poorly formed points/values. Points/values can be updated individually.
-      # so numrows doesn't have to match on assignment. But the object should 
+      # so numrows doesn't have to match on assignment. But the object should
       # track whether or not the points/values are in a matched state.
       #
       # Points - can be empty, must be a 2 x n (2D) or 3 x n (3D) double array
@@ -451,12 +451,12 @@ classdef scatteredInterpolant
                 endif
 
               otherwise
-                error ("scatteredInterpolant: invalid property '%s'", ... 
+                error ("scatteredInterpolant: invalid property '%s'", ...
                         S(1).subs);
             endswitch
             this = builtin ("subsasgn", this, S, val);
 
-          elseif (numel(S) == 2)  
+          elseif (numel(S) == 2)
           ## if 2nd index level, must be (), check value before calling builtin
             switch S(2).type(1)
               case "("
@@ -513,15 +513,15 @@ classdef scatteredInterpolant
                     endif
 
                   otherwise
-                    error ("scatteredInterpolant: invalid property '%s'", ... 
+                    error ("scatteredInterpolant: invalid property '%s'", ...
                             S(1).subs);
                 endswitch
                 this = builtin ("subsasgn", this, S, val);
 
               case "."
-                error ("scatteredInterpolant: scatteredInterpolant properties cannot be subindexed by '.'"); 
+                error ("scatteredInterpolant: scatteredInterpolant properties cannot be subindexed by '.'");
               case "{"
-                error ("scatteredInterpolant: scatteredInterpolant cannot be indexed by {}"); 
+                error ("scatteredInterpolant: scatteredInterpolant cannot be indexed by {}");
               otherwise
             endswitch
 
@@ -544,7 +544,7 @@ classdef scatteredInterpolant
           #  cannot be used for array assignment.
           error ("scatteredInterpolant: scatteredInterpolant array value assignment undefined");
         case "{"
-          error ("scatteredInterpolant: scatteredInterpolant cannot be indexed by {}"); 
+          error ("scatteredInterpolant: scatteredInterpolant cannot be indexed by {}");
         otherwise
           error ("scatteredInterpolant: invalid scatteredInterpolant index type '%s'", S(1).type);
       endswitch
