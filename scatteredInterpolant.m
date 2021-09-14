@@ -115,13 +115,16 @@ classdef scatteredInterpolant
     Values = [] # function values at sampling Points
     Method = "linear" # interpolation method: linear, nearest, or natural
     ExtrapolationMethod = "linear" # extrapolation method: linear, nearest, or none
-##  endproperties
-##
-##  properties (Access = private, Hidden = true)
+%%  endproperties
+%%
+%%  properties (Access = private, Hidden = true)
     dimension = 0 #values - 0 (empty), 2D, or 3D, from columns(Points)
     tri = [] #stored delaunay triangulation
-    valid_tri = false; #is current triangulation valid
-    enough_points = false; # are there enough points (>3 for 2D, >4 for 3D)
+    
+    ## state variables for warnings/errors. start all as 'valid' for empty
+    ## constructor
+    valid_tri = true; #is current triangulation valid
+    enough_points = true; # are there enough points (>3 for 2D, >4 for 3D)
     valid_points_vals = true; # do points and values match in number/dimensions
   endproperties
 
@@ -205,7 +208,7 @@ classdef scatteredInterpolant
             endif
 
             ## already verified second input is column vector numeric input.
-            %keyboard
+
             this.Points = varargin{1};
             this.Values = varargin{2};
 
@@ -231,7 +234,7 @@ classdef scatteredInterpolant
             # this.Method = "linear"; this.ExtrapolationMethod = "linear";
 
           case 1
-            %keyboard
+
             this.Method = tolower (varargin{num_input_count + 1});
             switch this.Method
               case {"linear", "natural"}
@@ -265,31 +268,24 @@ classdef scatteredInterpolant
     function v = subsref (this, S)
       ## subsref eitheAr returns a property value, or if () does the actual interpolation
       ## performing interpolation should return errors or warnings if in a bad state
+
+      #issue warning if Point status flags set
+      this.dimension = columns (this.Points); ## 0 (empty) or 2/3 for 2D/3D
+
+      if (! this.valid_tri)
+        if (! this.enough_points)
+          warning("scatteredInterpolant: not enough points to create a triangulation\n");
+        else
+          warning("scatteredInterpolant: cannot calculate triangulation from given points\n");
+        endif
+      endif
+
       for idx = 1: numel(S)
         if (idx == 1)
           switch S(1).type(1)
             case "("
-
-              if (! this.valid_tri)
-                ## no valid triangulation. determine reason, warn, return empty
-
-                if isempty (this.Points)
-                  ## no points supplied, empty return, no warning.
-                  ##NOT TRUE.  gives warning if a flag has been tripped.
-                  v = [];
-
-                elseif (rows (this.Points) < (this.dimension + 1))
-                  ## not enough points (<3 for 2D, <4 for 3D) to triangulate
-                  warning("scatteredInterpolant: not enough points to create a triangulation");
-                  v = [];
-                else
-                  ## triangulation invalid due to the points given. (perhaps colinear/planar)
-                  warning("scatteredInterpolant: cannot calculate triangulation from given points");
-                  v = [];
-                endif
-
-              elseif (any (cellfun (@isempty, S(1).subs)))
-                ## any element of query empty, returns [] no matter dimensions
+              if (isempty (this.Points) || (! this.valid_tri)) ...
+                   || (any (cellfun (@isempty, S(1).subs)))
                 v = [];
 
               elseif (! this.valid_points_vals)
@@ -298,68 +294,35 @@ classdef scatteredInterpolant
 
               elseif (numel(S(1).subs) != this.dimension)
                 ## input dimension does not match dimensionality of points
-                error ("scatteredInterpolant: query points dimensionality must match interpolant")
+                error ("scatteredInterpolant: query points dimensionality must match interponant", this.dimension)
 
               else
 
-              ## perform interpolation using stored triangulation according to methods
+                ##Perform interpolation on interior points according to method
                 switch this.Method
                   case "nearest"
-                    switch this.ExtrapolationMethod
-                      case "none"
-                      case "nearest"
-
-  ##  presize v, fill with NaN?, substitute nearest values
-  ##                      idx = dsearchn (x, tri, xi);
-  ##                      valid = ! isnan (idx);
-  ##                      yi(valid) = y(idx(valid));
-  ##                    case "linear"
-                    endswitch
+                    
 
                   case "linear"
-                    switch this.ExtrapolationMethod
-                      case "none"
-                      case "nearest"
-                      case "linear"
-                    endswitch
+
                   case "natural"
-                    switch this.ExtrapolationMethod
-                      case "none"
-                      case "nearest"
-                      case "linear"
-                    endswitch
+
                 endswitch
 
+                ##Perform extrapolation on interior points according to method
+                switch this.ExtrapolationMethod
+                  case "none"
+                    
+                  case "nearest"
 
-                v= magic(3);
+                  case "linear"
+                endswitch
 
+                v= magic(3);  ##placeholder return value
 
-
-                ## if indexed with (), perform a grid interpolation.
-                ## if indexed with {}, return error using builtin (not defined for class)
-                ## if indexed with ., return the property as normal using builtin subsref.
-          ##      if(numel(S.subs)==1)
-          ##        if(iscell(S.subs{1}))
-          ##          [xi, yi] = meshgrid(S.subs{1}{:});
-          ##        else
-          ##          xi = S.subs{1}(:,1);
-          ##          yi = S.subs{1}(:,2);
-          ##        endif
-          ##      else
-          ##        xi = S.subs{1};
-          ##        yi = S.subs{2};
-          ##      endif
-          ##      v = griddata(obj.Points(:,1), obj.Points(:,2), obj.Values, xi, yi, obj.Method);
               endif
 
-            case {"."}
-              #check if warnings should be shown first if points or triangulation in bad state
-
-              #if Points or Vals empty,
-
-              v = builtin ("subsref", this, S(1));
-
-            case {"{"}
+            case {".", "{"}
               v = builtin ("subsref", this, S(1));
 
             otherwise
@@ -697,9 +660,10 @@ endclassdef
 %! fail ("A(1,2)", "warning", "cannot calculate triangulation");
 
 %!test ##check point sufficiency warnings
-%! A = scatteredInterpolant (magic(3), [1:3]);
+%! A = scatteredInterpolant (magic(3), [1:3]');
 %! fail ("A(1,2,3)", "warning", "not enough points");
-%! fail ("A(1,2,3)", "warning", "not enough points");
+%! A = scatteredInterpolant (magic(2), [1:2]');
+%! fail ("A(1,2)", "warning", "not enough points");
 
 ##TEST DISP
 %!error <only defined for one input> disp (scatteredInterpolant (), 1)
