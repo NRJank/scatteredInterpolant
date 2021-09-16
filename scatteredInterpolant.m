@@ -33,14 +33,14 @@ classdef scatteredInterpolant
   ## @deftypefnx {} {@var{f} =} scatteredInterpolant (@dots{}, @var{method})
   ## @deftypefnx {} {@var{f} =} scatteredInterpolant (@dots{}, @var{method}, @var{extrapolationmethod})
   ##
-  ## Generate a 2D or 3D interpolating function @var{f} defined by an input set of
-  ## scattered datapoints @var{x}, @var{y}, @var{z}, and function values, @var{q}
-  ## at those points.
+  ## Generate a 2D or 3D interpolating function @var{f} defined by an input set
+  ## of scattered datapoints @var{x}, @var{y}, @var{z}, and function values,
+  ## @var{q} at those points.
   ##
-  ## @var{x}, @var{y}, @var{z} must be vectors of the same length as @var{q}. The
-  ## input points may also be specified as a single matrix, @var{P} where each row
-  ## of @var{P} contains the coordinates of a single point corresponding to
-  ## function values in @var{q}.
+  ## @var{x}, @var{y}, @var{z} must be vectors of the same length as @var{q}.
+  ## The input points may also be specified as a single matrix, @var{P} where
+  ## each row of @var{P} contains the coordinates of a single point
+  ## corresponding to function values in @var{q}.
   ##
   ## The returned function can then be evaluated as any of:
   ##
@@ -57,13 +57,16 @@ classdef scatteredInterpolant
   ## where @var{xi}, @var{yi}, (and @var{zi} for 3D points) are equal sized
   ## arrays containing coordinates of every query point, and @var{Pi} refers to
   ## a single matrix of query points, with each row consisting of the @var{x},
-  ## @var{y} (and @var{z}) coordinates of a single point. @{@var{Xg}, @var{Yg},
+  ## @var{y} (and @var{z}) coordinates of a single point.  @{@var{Xg}, @var{Yg},
   ## @var{Zg}@} refers to a cell array of grid vectors defining each axis of
   ## a grid space to be interpolated.
   ##
-  ## The output Si will contain the interpolated values with the same array shape
-  ## as the inputs, except for grid vector inputs, where the output will be the
-  ## shape of the defined grid.
+  ## The output Si will contain the interpolated values with the same array
+  ## shape as the inputs, except for grid vector inputs, where the output will
+  ## be the shape of the defined grid.  Note that the grid vector ordering uses
+  ## @code{ndgrid}, where the first vector is expanded along dim-1, and not
+  ## @code{meshgrid}, where the first vector is expanded along the 'horizontal'
+  ## or dim-2 dimension.  @xref{Three-Dimensional Plots} for more detail.
   ##
   ## Interpolation is based on Delaunay triangulation and can be controlled by
   ## supplying options for @var{method}, which can take the values of:
@@ -73,15 +76,15 @@ classdef scatteredInterpolant
   ## Discontinuous interpolation assigning value of nearest sample data point.
   ##
   ## @item linear
-  ## (Default) Linear interpolation between nearest grid points according to local
-  ## triangulation.
+  ## (Default) Linear interpolation between nearest grid points according to
+  ## local triangulation.
   ##
   ## @item natural
   ## Natural neighbor interpoltaion
   ## @end table
   ##
   ## Extrapolation behavior can be defined by providing by supplying an optional
-  ## @var{ExtrapolationMethod} option. Valid extrapolation methods are:
+  ## @var{ExtrapolationMethod} option.  Valid extrapolation methods are:
   ##
   ## @table @code
   ## @item none
@@ -90,12 +93,12 @@ classdef scatteredInterpolant
   ##
   ## @item linear
   ## Linear extrapolation will be performed based on the gradient at nearby
-  ## triangulation boundaries. This is the default behavior when interpolation
+  ## triangulation boundaries.  This is the default behavior when interpolation
   ## method is either @option{linear} or @option{natural}.
   ##
   ## @item nearest
   ## Nearest neighbor extrapolation will return the value of the nearest
-  ## neigboring point on the boundary. This is the default when interpolation
+  ## neigboring point on the boundary.  This is the default when interpolation
   ## method is set to @option{nearest}.
   ## @end table
   ##
@@ -104,7 +107,7 @@ classdef scatteredInterpolant
   ## whereas @sc{Matlab} likely uses the newer delaunayTriangulation objects.
   ## Certain point inputs fail for delaunayn in both programs that can be
   ## handled by delaunayTriangulation (for example the 8 corner points of a 3D
-  ## cube). This will be a scatteredInterpolant limitation until a compatible
+  ## cube).  This will be a scatteredInterpolant limitation until a compatible
   ## delaunayTriangulation is implemented.
   ##
   ## @seealso{TriScatteredInterp, griddata, delaunay, delaunayn}
@@ -283,10 +286,12 @@ classdef scatteredInterpolant
 
       for S_idx = 1: numel(S)
         if (S_idx == 1)
+
           switch S(1).type(1)
             case "("
               if (isempty (this.Points) || (! this.valid_tri)) ...
-                   || (any (cellfun (@isempty, S(1).subs)))
+                   || (any (cellfun (@isempty, S(1).subs))) ...
+                     || isempty (S(1).subs)
                 v = [];
 
               elseif (! this.valid_points_vals)
@@ -295,26 +300,17 @@ classdef scatteredInterpolant
 
               else
 
-              ##process query points 
-              ## data can come in as (xvals, yvals, (zvals))
-              ## or as ([x y (z)])
-              ## or as {x, y (z)} << grid vectors to be expanded to full grid
-
-              keyboard
-
               ## Query points input validation
-              reshape_flag = false; ## cell inputs need a reshape at the end
-
               num_query_elements = numel (S(1).subs);
 
               switch num_query_elements
                 case 1
-                  if isnumeric (S(1).subs)
+                  if isnumeric (S(1).subs{1})
                     ## single numeric input array. must be 2D array.
                     ## columns must match dim.
                     ## can allow a col vector to be accepted, handled as a
                     ## single point by switching to row vector
-                    qp = S(1).subs;
+                    qp = S(1).subs{1};
                     
                     if (ndims (qp) > 2)
                       error ("scatteredInterpolant: query points must be 2D vectors or arrays");
@@ -322,7 +318,10 @@ classdef scatteredInterpolant
 
                     # if vector, ensure row vector
                     if isvector (qp)
+                      sz_output = size(qp);
                       qp = qp(:).';
+                    else
+                      sz_output = size(qp(:,1));
                     endif
 
                     #check for correct dimensionality
@@ -330,22 +329,23 @@ classdef scatteredInterpolant
                       error ("scatteredInterpolant: query points dimension must match interpolant");
                     endif
 
-                  elseif iscell (S(1).subs)
+                  elseif iscell (S(1).subs{1})
                     ## cell inputs must the same number of vectors as
                     ## dimension.  process as grid vectors to build query point
                     ## array.
-                    if (! all (cellfun (@isnumeric, S(1).subs)))
+                    if (! all (cellfun (@isnumeric, S(1).subs{1})))
                       error ("scatteredInterpolant: query grid vectors must be numeric");
 
-                    elseif numel (S(1).subs != this.dimension)
+                    elseif numel (S(1).subs{1}) != this.dimension
                       error ("scatteredInterpolant: query grid vector count must match interpolant dimension");
                       
-                    elseif (! all (cellfun (@isvector, S(1).subs)))
-                      error ("scatteredInterpolant: must be gridvectors");
+                    elseif (! all (cellfun (@isvector, S(1).subs{1})))
+                      error ("scatteredInterpolant: query grid vectors must be row or column vectors");
                     endif
-                    
-                    ## vector orientation doesn't matter for ndgrid
+
+
                     ## extract grid vectors and produce point array
+                    ## vector orientation doesn't matter for ndgrid
                     switch this.dimension
                       case 2
                         [qp_x, qp_y] = ndgrid (S(1).subs{:});
@@ -354,27 +354,39 @@ classdef scatteredInterpolant
                       case 3
                         [qp_x, qp_y, qp_z] = ndgrid (S(1).subs{:});
                         qp = [qp_x(:), qp_y(:), qp_z(:)];
-                      otherwise
-                        error ("scatteredInterpolant: dimension must be 2 or 3");
                     endswitch
-
-                    reshape_flag = true;  # flag for final reshape to size(qp_x)
+                    sz_output = size(qp_x);
 
                   else
-                    print_query_points_usage ();
+                    print_query_points_usage (this);
                   endif
 
                 case {2,3}
+
+                  ## all query inputs need to be numeric vectors or arrays 
                   if ! all (cellfun (@isnumeric, S(1).subs))
-                    print_query_points_usage ();
+                    print_query_points_usage (this);
 
-                  elseif ! all (cellfun (@isvector, S(1).subs))
-                    error ("scatteredInterpolant: all query point inputs must be vectors");
+                  elseif (num_query_elements != this.dimension)
+                    error ("scatteredInterpolant: query points dimension must match interpolant");
 
-                  elseif any ((numel (S(1).subs{1})) != (cellfun (@numel, S(1).subs)))
-                    error ("scatteredInterpolant: query point input vectors must be equal length");
                   endif
-                  
+
+                  ## check for vectors to be equal length
+                  if ((all (cellfun (@isvector, S(1).subs))) ...
+                      && (! all (isequal (cellfun (@numel, S(1).subs, ...
+                            "UniformOutput", false){:}))))
+                    error ("scatteredInterpolant: query point vectors must have equal length");
+
+                  ## and nd arrays to be equal size
+                  elseif ! isequal (cellfun (@size, S(1).subs, "UniformOutput", false){:})
+                    error ("scatteredInterpolant: query point inputs must have equal size");
+
+                  endif
+
+                  ## set output size based on first input element
+                  sz_output = size(S(1).subs{1});
+
                   switch this.dimension
                     case 2
                       qp = [S(1).subs{1}(:), S(1).subs{2}(:)];
@@ -384,7 +396,7 @@ classdef scatteredInterpolant
 
                 otherwise
                   ## must be 1,2, or 3 input elements. call query usage error
-                  print_query_points_usage ();
+                  print_query_points_usage (this);
               endswitch
 
               ## perform interpolation using stored triangulation according to methods
@@ -619,7 +631,7 @@ classdef scatteredInterpolant
 
   endmethods
 
-  methods (Access = public, Hidden = true)
+  methods (Access = public, Hidden = false)
 
     function this = setTriangulation (this)
       ##called by constructor and subsasgn whenever tri needs a recalc
@@ -649,7 +661,7 @@ classdef scatteredInterpolant
       this.enough_points = this.dimension && (rows (this.Points) > this.dimension);
     endfunction
 
-    function print_query_points_usage ()
+    function print_query_points_usage (this)
       msg = sprintf(["scatteredInterpolant: invalid query points form. Correct usage is:\n\n", ...
     "    Si = f(xi, yi)\n", ...
     "    Si = f(xi, yi, zi)\n", ...
@@ -781,6 +793,31 @@ endclassdef
 %! fail ("A(1,2,3)", "warning", "not enough points");
 %! A = scatteredInterpolant (magic(2), [1:2]');
 %! fail ("A(1,2)", "warning", "not enough points");
+
+##interpolation input handling
+%!test 
+%! A = scatteredInterpolant ([magic(3); 2*magic(3)], [1:6]);
+%! qp = cat (3, [1 2 3], [4 5 6]);
+%! fail ("A(qp)", "query points must be 2D vectors or arrays");
+%! fail ("A([1,2])", "query points dimension must match");
+%! fail ("A({'abc'})", "must be numeric");
+%! fail ("A({[1,2]})", "query grid vector count must match");
+%! fail ("A({[1,2,3]})", "query grid vector count must match");
+%! fail ("A({[1,2],[3,4]})", "query grid vector count must match");
+%! fail ("A({[1,2;3,4],1,1})", "query grid vectors must be row or column");
+%! fail ("A(1,2)", "query points dimension must match interpolant");
+%! fail ("A(1,2,[3 4])", "query point vectors must have equal length");
+%! fail ("A([1 2 3],[1 2],[3 4 5])", "query point vectors must have equal length");
+%! fail ("A([1 2 3]',[1 2]',[3 4 5]')", "query point vectors must have equal length");
+%! fail ("A([1 2 3],[1 2],[3 4 5]')", "query point vectors must have equal length");
+%! fail ("A([1,2;3,4],[1,2;3,4],[1,2])", "query point inputs must have equal size");
+%! fail ("A(qp,qp,[1 2 3])", "query point inputs must have equal size");
+%! fail ("A('foo')", "invalid query points form");
+%! fail ("A({1 2 3},{1 2 3})", "invalid query points form");
+%! fail ("A(1,2,3,4)", "invalid query points form");
+
+
+
 
 ##TEST DISP
 %!error <only defined for one input> disp (scatteredInterpolant (), 1)
