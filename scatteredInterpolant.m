@@ -107,7 +107,9 @@ classdef scatteredInterpolant
   ## whereas @sc{Matlab} likely uses the newer delaunayTriangulation objects.
   ## Certain point inputs fail for delaunayn in both programs that can be
   ## handled by delaunayTriangulation (for example the 8 corner points of a 3D
-  ## cube).  This will be a scatteredInterpolant limitation until a compatible
+  ## cube). There may also be differing interpolation results between the two
+  ## programs coming from differences in the underlying triangulations.  This
+  ## will be a scatteredInterpolant limitation at least until a compatible
   ## delaunayTriangulation is implemented.
   ##
   ## @seealso{TriScatteredInterp, griddata, delaunay, delaunayn}
@@ -123,7 +125,7 @@ classdef scatteredInterpolant
 %%  properties (Access = private, Hidden = true)
     dimension = 0 #values - 0 (empty), 2D, or 3D, from columns(Points)
     tri = [] #stored delaunay triangulation
-    
+
     ## state variables for warnings/errors. start all as 'valid' for empty
     ## constructor
     valid_tri = true; #is current triangulation valid
@@ -134,14 +136,14 @@ classdef scatteredInterpolant
   methods (Access = public)
 
     function this = scatteredInterpolant (varargin) ##object constructor
-      %keyboard
+
       if (nargin == 0)
         ## do nothing, defaults already set, avoid other error checks.
 
       elseif (nargin == 1 || nargin > 6)
         ## if not empty, varargin must contain 2-6 elements
-        ##print_usage ();
-        error ("scatteredInterpolant: invalid number of inputs");
+        print_usage (this);
+        #error ("scatteredInterpolant: invalid number of inputs");
 
       elseif (isempty (varargin{1}) || isempty (varargin{2}))
         error ("scatteredInterpolant: input points and values cannot be empty");
@@ -170,19 +172,20 @@ classdef scatteredInterpolant
         ## make sure all numeric input comes before char input
         ## no char inputs produce empty comparison result which if counts as false
         if (find (numer_input_loc, 1, "last") >=  find (char_input_loc, 1, "first"))
-          error ("scatteredInterpolant: options must follow all numeric inputs.")
+          print_usage (this);
+          #error ("scatteredInterpolant: options must follow all numeric inputs.")
         endif
 
         num_input_count = sum (numer_input_loc);
         char_input_count = sum (char_input_loc);
 
         ## check that number of data and method inputs don't fall out of bounds
-        if (num_input_count < 2 || num_input_count > 4)
-          ##print_usage ();
-          error ("scatteredInterpolant: invalid number of numeric inputs");
-        elseif (char_input_count > 2)
-          ##print_usage ();
-          error ("scatteredInterpolant: invalid number of string inputs");
+        if ((num_input_count < 2 || num_input_count > 4) || (char_input_count > 2))
+          print_usage (this);
+##          error ("scatteredInterpolant: invalid number of numeric inputs");
+##        elseif (char_input_count > 2)
+##          ##print_usage ();
+##          error ("scatteredInterpolant: invalid number of string inputs");
         endif
 
         ## make sure last numeric input, should be q, is a vector
@@ -228,8 +231,8 @@ classdef scatteredInterpolant
             this = setTriangulation (this);
 
           otherwise
-          ##print_usage ();
-            error ("scatteredInterpolant: invalid number of numeric inputs");
+            print_usage (this);
+            #error ("scatteredInterpolant: invalid number of numeric inputs");
         endswitch
 
         switch char_input_count
@@ -262,8 +265,8 @@ classdef scatteredInterpolant
             endif
 
           otherwise
-            ##print_usage ();
-            error ("scatteredInterpolant: invalid number of string inputs");
+            print_usage ();
+            #error ("scatteredInterpolant: invalid number of string inputs");
         endswitch
 
       endif
@@ -289,6 +292,7 @@ classdef scatteredInterpolant
 
           switch S(1).type(1)
             case "("
+##              keyboard
               if (isempty (this.Points) || (! this.valid_tri)) ...
                    || (any (cellfun (@isempty, S(1).subs))) ...
                      || isempty (S(1).subs)
@@ -301,8 +305,13 @@ classdef scatteredInterpolant
               else
 
               ## Query points input validation
-              num_query_elements = numel (S(1).subs);
 
+              ## interp output will be a column vector.  If input has any other
+              ## size, flag must be changed to true and sz_output must be set
+              ## for final reshape
+              reshape_flag = false;
+
+              num_query_elements = numel (S(1).subs);
               switch num_query_elements
                 case 1
                   if isnumeric (S(1).subs{1})
@@ -310,22 +319,19 @@ classdef scatteredInterpolant
                     ## columns must match dim.
                     ## can allow a col vector to be accepted, handled as a
                     ## single point by switching to row vector
-                    qp = S(1).subs{1};
-                    
-                    if (ndims (qp) > 2)
+                    qpts = S(1).subs{1};
+
+                    if (ndims (qpts) > 2)
                       error ("scatteredInterpolant: query points must be 2D vectors or arrays");
                     endif
 
-                    # if vector, ensure row vector
-                    if isvector (qp)
-                      sz_output = size(qp);
-                      qp = qp(:).';
-                    else
-                      sz_output = size(qp(:,1));
+                    ## if vector, ensure row vector
+                    if isvector (qpts)
+                      qpts = qpts(:).';
                     endif
 
                     #check for correct dimensionality
-                    if (columns (qp) != this.dimension)
+                    if (columns (qpts) != this.dimension)
                       error ("scatteredInterpolant: query points dimension must match interpolant");
                     endif
 
@@ -338,7 +344,7 @@ classdef scatteredInterpolant
 
                     elseif numel (S(1).subs{1}) != this.dimension
                       error ("scatteredInterpolant: query grid vector count must match interpolant dimension");
-                      
+
                     elseif (! all (cellfun (@isvector, S(1).subs{1})))
                       error ("scatteredInterpolant: query grid vectors must be row or column vectors");
                     endif
@@ -348,14 +354,15 @@ classdef scatteredInterpolant
                     ## vector orientation doesn't matter for ndgrid
                     switch this.dimension
                       case 2
-                        [qp_x, qp_y] = ndgrid (S(1).subs{:});
-                        qp = [qp_x(:), qp_y(:)];
+                        [qpts_x, qpts_y] = ndgrid (S(1).subs{:});
+                        qpts = [qpts_x(:), qpts_y(:)];
 
                       case 3
-                        [qp_x, qp_y, qp_z] = ndgrid (S(1).subs{:});
-                        qp = [qp_x(:), qp_y(:), qp_z(:)];
+                        [qpts_x, qpts_y, qpts_z] = ndgrid (S(1).subs{:});
+                        qpts = [qpts_x(:), qpts_y(:), qpts_z(:)];
                     endswitch
-                    sz_output = size(qp_x);
+                    sz_output = size(qpts_x);
+                    reshape_flag = true;
 
                   else
                     print_query_points_usage (this);
@@ -363,7 +370,7 @@ classdef scatteredInterpolant
 
                 case {2,3}
 
-                  ## all query inputs need to be numeric vectors or arrays 
+                  ## all query inputs need to be numeric vectors or arrays
                   if ! all (cellfun (@isnumeric, S(1).subs))
                     print_query_points_usage (this);
 
@@ -385,13 +392,16 @@ classdef scatteredInterpolant
                   endif
 
                   ## set output size based on first input element
-                  sz_output = size(S(1).subs{1});
+                  if (! iscolumn (S(1).subs{1}))
+                    sz_output = size(S(1).subs{1});
+                    reshape_flag = true;
+                  endif
 
                   switch this.dimension
                     case 2
-                      qp = [S(1).subs{1}(:), S(1).subs{2}(:)];
+                      qpts = [S(1).subs{1}(:), S(1).subs{2}(:)];
                     case 3
-                      qp = [S(1).subs{1}(:), S(1).subs{2}(:), S(1).subs{3}(:)];
+                      qpts = [S(1).subs{1}(:), S(1).subs{2}(:), S(1).subs{3}(:)];
                   endswitch
 
                 otherwise
@@ -399,42 +409,69 @@ classdef scatteredInterpolant
                   print_query_points_usage (this);
               endswitch
 
-              ## perform interpolation using stored triangulation according to methods
+              ## tsearchn outputs vector of containing simplex, or NaN for Outside point
+              ## plus barycentric coordinates of point within the simplex
+              ## vi = [barycentric_coord].[local.Values]
 
-              ## all points now in qp, which is a n x dim array. if grid vectors
-              ## were used, need to reshape interpolation back to ndgrid shape. 
-
-
-              ## tsearchn output vector of containing simplex, or NaN for Outside point
-%              [inside_nearest_tri, inside_bary_coord] = tsearchn (this.Points, this.tri, qp);
-%              outside_pt_idx = isnan (inside_nearest_tri);
-%              inside_tri_idx = ! outside_pt_idx;
-
-
-
-              ## identify external points for extrapolation
+              v = NaN (rows(qpts), 1);
 
                 ##Perform interpolation on interior points according to method
                 switch this.Method
                   case "nearest"
-                    
+                    switch this.ExtrapolationMethod
+                      case "none"
+                        nearest_pt_idx = dsearchn (this.Points, this.tri, qpts, NaN);
+                        v(! isnan (nearest_pt_idx)) = ...
+                          this.Values(nearest_pt_idx(! isnan (nearest_pt_idx)));
+
+                      case "nearest"
+                        nearest_pt_idx = dsearchn (this.Points, this.tri, qpts);
+                        v = this.Values(nearest_pt_idx);
+
+                      case "linear"
+                    endswitch
+
 
                   case "linear"
+                  [inside_pt_in_tri, inside_bary_coord] = tsearchn (this.Points, this.tri, qpts);
+                  inside_pt_idx = !isnan (inside_pt_in_tri);
+                  outside_pt_idx = ! inside_pt_idx;
+
+                  #need this.Values for those not-NAN points,
+                  localvalues = this.Values(inside_pt_in_tri)
+
+
+                    switch this.ExtrapolationMethod
+                      case "none"
+
+                      case "nearest"
+                      case "linear"
+                    endswitch
 
                   case "natural"
+                    error ("scatteredInterpolant: 'natural' interpolation method not yet implemented")
+                    switch this.ExtrapolationMethod
+                      case "none"
+                      case "nearest"
+                      case "linear"
+                    endswitch
+                  endswitch
 
-                endswitch
-
-                ##Perform extrapolation on interior points according to method
-                switch this.ExtrapolationMethod
-                  case "none"
-                    
-                  case "nearest"
-
-                  case "linear"
-                endswitch
-
-                v= magic(3);  ##placeholder return value
+##                ##Perform extrapolation on interior points according to method
+##                switch this.ExtrapolationMethod
+##                  case "none"
+##                    ## do nothing, output initialized with NaN
+##
+##                  case "nearest"
+##                    nearest_outside_pt_idx = dsearchn (this.Points, this.tri, qpts(outside_pt_idx,:));
+##                    v(outside_pt_idx) = this.Values(nearest_outside_pt_idx);
+##                  case "linear"
+##
+##                endswitch
+##
+                if (reshape_flag)
+                  v = reshape (v, sz_output);
+                endif
 
               endif
 
@@ -671,7 +708,28 @@ classdef scatteredInterpolant
     "    See 'help scatteredInterpolant' for more information."]);
       error (struct ("message", msg, "identifier", "", "stack", dbstack (1)));
     endfunction
-    
+
+    function print_usage (this)
+      ## FIXME: overloading print_usage until bug ___ is fixed for classdefs.
+      ## can remove once that's fixed.
+      ident = "Octave:invalid-fun-call";
+      msg = sprintf(["Invalid call to scatteredInterpolant.  Correct usage is:\n\n", ...
+        "    -- F = scatteredInterpolant\n"...
+        "    -- F = scatteredInterpolant (X, Y, Q)\n"...
+        "    -- F = scatteredInterpolant (X, Y, Z, Q)\n"...
+        "    -- F = scatteredInterpolant (P, Q)\n"...
+        "    -- F = scatteredInterpolant (..., METHOD)\n"...
+        "    -- F = scatteredInterpolant (..., METHOD, EXTRAPOLATIONMETHOD)\n\n"...
+        "Additional help for built-in functions and operators is\n"...
+        "available in the online version of the manual.  Use the command\n"...
+        "'doc <topic>' to search the manual index.\n\n"...
+        "Help and information about Octave is also available on the WWW\n"...
+        "at https://www.octave.org and via the help@octave.org\n"...
+        "mailing list.\n"]);
+
+      error (struct ("message", msg, "identifier", ident, "stack", dbstack (1)));
+    endfunction
+
   endmethods
 
 endclassdef
@@ -750,7 +808,7 @@ endclassdef
 %!error <input points and values cannot be empty> scatteredInterpolant ([], [1 2 3]')
 %!error <input points and values cannot be empty> scatteredInterpolant (magic(3), [])
 %!error <inputs must be numeric arrays or> scatteredInterpolant (1, 1, false, 1, "abc" , "def")
-%!error <options must follow all numeric inputs>  scatteredInterpolant (1, 1, 1, "abc", 1, "def")
+%!error scatteredInterpolant (1, 1, 1, "abc", 1, "def")
 %!error <Value input must be a numeric vector> scatteredInterpolant (magic (3), magic (3))
 %!error <must have the same number of rows> scatteredInterpolant (magic (3), [1:4])
 %!error <must have the same number of rows> scatteredInterpolant (magic (3), [1:2])
@@ -795,10 +853,10 @@ endclassdef
 %! fail ("A(1,2)", "warning", "not enough points");
 
 ##interpolation input handling
-%!test 
+%!test
 %! A = scatteredInterpolant ([magic(3); 2*magic(3)], [1:6]);
-%! qp = cat (3, [1 2 3], [4 5 6]);
-%! fail ("A(qp)", "query points must be 2D vectors or arrays");
+%! qpts = cat (3, [1 2 3], [4 5 6]);
+%! fail ("A(qpts)", "query points must be 2D vectors or arrays");
 %! fail ("A([1,2])", "query points dimension must match");
 %! fail ("A({'abc'})", "must be numeric");
 %! fail ("A({[1,2]})", "query grid vector count must match");
@@ -811,12 +869,19 @@ endclassdef
 %! fail ("A([1 2 3]',[1 2]',[3 4 5]')", "query point vectors must have equal length");
 %! fail ("A([1 2 3],[1 2],[3 4 5]')", "query point vectors must have equal length");
 %! fail ("A([1,2;3,4],[1,2;3,4],[1,2])", "query point inputs must have equal size");
-%! fail ("A(qp,qp,[1 2 3])", "query point inputs must have equal size");
+%! fail ("A(qpts,qpts,[1 2 3])", "query point inputs must have equal size");
 %! fail ("A('foo')", "invalid query points form");
 %! fail ("A({1 2 3},{1 2 3})", "invalid query points form");
 %! fail ("A(1,2,3,4)", "invalid query points form");
 
-
+##interpolation output tests
+%!test
+%! pts = [0 0 0; 0 0 1; 0 1 0; 1 0 0; 0 1 1; 1 0 1; 1 1 0; 1 1 1; 0.5 0.5 0.5];
+%! A = scatteredInterpolant (pts, [1:9]', 'nearest', 'none');
+%! qpts = magic(3)/10 -0.2;
+%! assert (A(qpts), [NaN, 9, 3]')
+%! A.ExtrapolationMethod = "nearest";
+%! assert (A(qpts), [4, 9, 3]')
 
 
 ##TEST DISP
