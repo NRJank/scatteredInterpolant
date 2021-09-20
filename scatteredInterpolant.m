@@ -292,7 +292,7 @@ classdef scatteredInterpolant
 
           switch S(1).type(1)
             case "("
-##              keyboard
+
               if (isempty (this.Points) || (! this.valid_tri)) ...
                    || (any (cellfun (@isempty, S(1).subs))) ...
                      || isempty (S(1).subs)
@@ -304,116 +304,117 @@ classdef scatteredInterpolant
 
               else
 
-              ## Query points input validation
+                ## Query points input validation
 
-              ## interp output will be a column vector.  If input has any other
-              ## size, flag must be changed to true and sz_output must be set
-              ## for final reshape
-              reshape_flag = false;
+                ## interp output will be a column vector.  If input has any other
+                ## size, flag must be changed to true and sz_output must be set
+                ## for final reshape
+                reshape_flag = false;
 
-              num_query_elements = numel (S(1).subs);
-              switch num_query_elements
-                case 1
-                  if isnumeric (S(1).subs{1})
-                    ## single numeric input array. must be 2D array.
-                    ## columns must match dim.
-                    ## can allow a col vector to be accepted, handled as a
-                    ## single point by switching to row vector
-                    qpts = S(1).subs{1};
+                num_query_elements = numel (S(1).subs);
+                switch num_query_elements
+                  case 1
+                    if isnumeric (S(1).subs{1})
+                      ## single numeric input array. must be 2D array.
+                      ## columns must match dim.
+                      ## can allow a col vector to be accepted, handled as a
+                      ## single point by switching to row vector
+                      qpts = S(1).subs{1};
 
-                    if (ndims (qpts) > 2)
-                      error ("scatteredInterpolant: query points must be 2D vectors or arrays");
+                      if (ndims (qpts) > 2)
+                        error ("scatteredInterpolant: query points must be 2D vectors or arrays");
+                      endif
+
+                      ## if vector, ensure row vector
+                      if isvector (qpts)
+                        qpts = qpts(:).';
+                      endif
+
+                      #check for correct dimensionality
+                      if (columns (qpts) != this.dimension)
+                        error ("scatteredInterpolant: query points dimension must match interpolant");
+                      endif
+
+                    elseif iscell (S(1).subs{1})
+                      ## cell inputs must the same number of vectors as
+                      ## dimension.  process as grid vectors to build query point
+                      ## array.
+                      keyboard
+                      if (! all (cellfun (@isnumeric, S(1).subs{1})))
+                        error ("scatteredInterpolant: query grid vectors must be numeric");
+
+                      elseif numel (S(1).subs{1}) != this.dimension
+                        error ("scatteredInterpolant: query grid vector count must match interpolant dimension");
+
+                      elseif (! all (cellfun (@isvector, S(1).subs{1})))
+                        error ("scatteredInterpolant: query grid vectors must be row or column vectors");
+                      endif
+
+
+                      ## extract grid vectors and produce point array
+                      ## vector orientation doesn't matter for ndgrid
+                      switch this.dimension
+                        case 2
+                          [qpts_x, qpts_y] = ndgrid (S(1).subs{:}{:});
+                          qpts = [qpts_x(:), qpts_y(:)];
+
+                        case 3
+                          [qpts_x, qpts_y, qpts_z] = ndgrid (S(1).subs{:}{:});
+                          qpts = [qpts_x(:), qpts_y(:), qpts_z(:)];
+                      endswitch
+                      sz_output = size(qpts_x);
+                      reshape_flag = true;
+
+                    else
+                      print_query_points_usage (this);
                     endif
 
-                    ## if vector, ensure row vector
-                    if isvector (qpts)
-                      qpts = qpts(:).';
-                    endif
+                  case {2,3}
 
-                    #check for correct dimensionality
-                    if (columns (qpts) != this.dimension)
+                    ## all query inputs need to be numeric vectors or arrays
+                    if ! all (cellfun (@isnumeric, S(1).subs))
+                      print_query_points_usage (this);
+
+                    elseif (num_query_elements != this.dimension)
                       error ("scatteredInterpolant: query points dimension must match interpolant");
+
                     endif
 
-                  elseif iscell (S(1).subs{1})
-                    ## cell inputs must the same number of vectors as
-                    ## dimension.  process as grid vectors to build query point
-                    ## array.
-                    if (! all (cellfun (@isnumeric, S(1).subs{1})))
-                      error ("scatteredInterpolant: query grid vectors must be numeric");
+                    ## check for vectors to be equal length
+                    if ((all (cellfun (@isvector, S(1).subs))) ...
+                        && (! all (isequal (cellfun (@numel, S(1).subs, ...
+                              "UniformOutput", false){:}))))
+                      error ("scatteredInterpolant: query point vectors must have equal length");
 
-                    elseif numel (S(1).subs{1}) != this.dimension
-                      error ("scatteredInterpolant: query grid vector count must match interpolant dimension");
+                    ## and nd arrays to be equal size
+                    elseif ! isequal (cellfun (@size, S(1).subs, "UniformOutput", false){:})
+                      error ("scatteredInterpolant: query point inputs must have equal size");
 
-                    elseif (! all (cellfun (@isvector, S(1).subs{1})))
-                      error ("scatteredInterpolant: query grid vectors must be row or column vectors");
                     endif
 
+                    ## set output size based on first input element
+                    if (! iscolumn (S(1).subs{1}))
+                      sz_output = size(S(1).subs{1});
+                      reshape_flag = true;
+                    endif
 
-                    ## extract grid vectors and produce point array
-                    ## vector orientation doesn't matter for ndgrid
                     switch this.dimension
                       case 2
-                        [qpts_x, qpts_y] = ndgrid (S(1).subs{:});
-                        qpts = [qpts_x(:), qpts_y(:)];
-
+                        qpts = [S(1).subs{1}(:), S(1).subs{2}(:)];
                       case 3
-                        [qpts_x, qpts_y, qpts_z] = ndgrid (S(1).subs{:});
-                        qpts = [qpts_x(:), qpts_y(:), qpts_z(:)];
+                        qpts = [S(1).subs{1}(:), S(1).subs{2}(:), S(1).subs{3}(:)];
                     endswitch
-                    sz_output = size(qpts_x);
-                    reshape_flag = true;
 
-                  else
+                  otherwise
+                    ## must be 1,2, or 3 input elements. call query usage error
                     print_query_points_usage (this);
-                  endif
+                endswitch
 
-                case {2,3}
+                ## tsearchn outputs vector of containing simplex, or NaN for Outside point
+                ## plus barycentric coordinates of point within the simplex
+                ## vi = [barycentric_coord].[local.Values]
 
-                  ## all query inputs need to be numeric vectors or arrays
-                  if ! all (cellfun (@isnumeric, S(1).subs))
-                    print_query_points_usage (this);
-
-                  elseif (num_query_elements != this.dimension)
-                    error ("scatteredInterpolant: query points dimension must match interpolant");
-
-                  endif
-
-                  ## check for vectors to be equal length
-                  if ((all (cellfun (@isvector, S(1).subs))) ...
-                      && (! all (isequal (cellfun (@numel, S(1).subs, ...
-                            "UniformOutput", false){:}))))
-                    error ("scatteredInterpolant: query point vectors must have equal length");
-
-                  ## and nd arrays to be equal size
-                  elseif ! isequal (cellfun (@size, S(1).subs, "UniformOutput", false){:})
-                    error ("scatteredInterpolant: query point inputs must have equal size");
-
-                  endif
-
-                  ## set output size based on first input element
-                  if (! iscolumn (S(1).subs{1}))
-                    sz_output = size(S(1).subs{1});
-                    reshape_flag = true;
-                  endif
-
-                  switch this.dimension
-                    case 2
-                      qpts = [S(1).subs{1}(:), S(1).subs{2}(:)];
-                    case 3
-                      qpts = [S(1).subs{1}(:), S(1).subs{2}(:), S(1).subs{3}(:)];
-                  endswitch
-
-                otherwise
-                  ## must be 1,2, or 3 input elements. call query usage error
-                  print_query_points_usage (this);
-              endswitch
-
-              ## tsearchn outputs vector of containing simplex, or NaN for Outside point
-              ## plus barycentric coordinates of point within the simplex
-              ## vi = [barycentric_coord].[local.Values]
-
-              v = NaN (rows(qpts), 1);
+                v = NaN (rows(qpts), 1);
 
                 ##Perform interpolation on interior points according to method
                 switch this.Method
@@ -433,18 +434,30 @@ classdef scatteredInterpolant
 
 
                   case "linear"
-                  [inside_pt_in_tri, inside_bary_coord] = tsearchn (this.Points, this.tri, qpts);
-                  inside_pt_idx = !isnan (inside_pt_in_tri);
-                  outside_pt_idx = ! inside_pt_idx;
+                    keyboard
+                    [tri_with_qpts, qpt_bary_coords] = tsearchn (this.Points, this.tri, qpts);
+                    inside_qpt_idx = !isnan (tri_with_qpts);
 
-                  #need this.Values for those not-NAN points,
-                  localvalues = this.Values(inside_pt_in_tri)
+                    qpt_vertices = this.tri(tri_with_qpts(inside_qpt_idx), :);
+                    
+                    if (isvector (qpt_vertices))
+                      #ensure vertex values in row vector
+                      qpt_vertex_values =  this.Values(qpt_vertices)(:)'; 
+                    else
+                      qpt_vertex_values =  this.Values(qpt_vertices);
+                    endif
 
+                    v(inside_qpt_idx) = dot(qpt_vertex_values, qpt_bary_coords(inside_qpt_idx,:), 2);
 
                     switch this.ExtrapolationMethod
                       case "none"
+                        #nothing to do. NaN already pre-filled for outside points.
 
                       case "nearest"
+                        outside_qpt_idx = ! inside_qpt_idx;
+                        nearest_pt_idx = dsearchn (this.Points, this.tri, qpts(outside_qpt_idx,:));
+                        v (outside_qpt_idx) = this.Values(nearest_pt_idx);
+
                       case "linear"
                     endswitch
 
@@ -455,20 +468,8 @@ classdef scatteredInterpolant
                       case "nearest"
                       case "linear"
                     endswitch
-                  endswitch
+                endswitch
 
-##                ##Perform extrapolation on interior points according to method
-##                switch this.ExtrapolationMethod
-##                  case "none"
-##                    ## do nothing, output initialized with NaN
-##
-##                  case "nearest"
-##                    nearest_outside_pt_idx = dsearchn (this.Points, this.tri, qpts(outside_pt_idx,:));
-##                    v(outside_pt_idx) = this.Values(nearest_outside_pt_idx);
-##                  case "linear"
-##
-##                endswitch
-##
                 if (reshape_flag)
                   v = reshape (v, sz_output);
                 endif
