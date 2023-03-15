@@ -51,10 +51,10 @@
 ## Matlab Compatibility Note:  @code{TriScatteredInterp} is impleneted as a
 ## wrapper for @code{scatteredInterpolant}. As such it will return a
 ## @code{scatteredInterpolant} class object instead of a
-## @code{TriScatteredInterp} object and and does not currently accept
-## DelaunayTri objects as input.
+## @code{TriScatteredInterp} object. It also does not currently accept
+## DelaunayTri objects as an input.
 ##
-## @seealso{scatteredInterpolant, griddata}
+## @seealso{scatteredInterpolant, delaunayn, griddata}
 ## @end deftypefn
 
 function F = TriScatteredInterp (varargin)

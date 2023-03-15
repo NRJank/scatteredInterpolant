@@ -107,10 +107,11 @@ classdef scatteredInterpolant
   ## whereas @sc{Matlab} likely uses the newer delaunayTriangulation objects.
   ## Certain point inputs fail for delaunayn in both programs that can be
   ## handled by delaunayTriangulation (for example the 8 corner points of a 3D
-  ## cube). There may also be differing interpolation results between the two
-  ## programs coming from differences in the underlying triangulations.  This
-  ## will be a scatteredInterpolant limitation at least until a compatible
-  ## delaunayTriangulation is implemented.
+  ## cube). Additionally, the  existance of multiple valid Delaunay
+  ## triangulations for a given point set can produce valid, but differing
+  ## differing interpolation results between the two programs.  This will be an
+  ## unavoidable scatteredInterpolant output compatibilty limitation at least
+  ## until a compatible delaunayTriangulation is implemented.  
   ##
   ## @seealso{TriScatteredInterp, griddata, delaunay, delaunayn}
   ## @end deftypefn
@@ -173,7 +174,6 @@ classdef scatteredInterpolant
         ## no char inputs produce empty comparison result which if counts as false
         if (find (numer_input_loc, 1, "last") >=  find (char_input_loc, 1, "first"))
           print_usage (this);
-          #error ("scatteredInterpolant: options must follow all numeric inputs.")
         endif
 
         num_input_count = sum (numer_input_loc);
@@ -182,10 +182,6 @@ classdef scatteredInterpolant
         ## check that number of data and method inputs don't fall out of bounds
         if ((num_input_count < 2 || num_input_count > 4) || (char_input_count > 2))
           print_usage (this);
-##          error ("scatteredInterpolant: invalid number of numeric inputs");
-##        elseif (char_input_count > 2)
-##          ##print_usage ();
-##          error ("scatteredInterpolant: invalid number of string inputs");
         endif
 
         ## make sure last numeric input, should be q, is a vector
@@ -232,7 +228,6 @@ classdef scatteredInterpolant
 
           otherwise
             print_usage (this);
-            #error ("scatteredInterpolant: invalid number of numeric inputs");
         endswitch
 
         switch char_input_count
@@ -241,7 +236,6 @@ classdef scatteredInterpolant
             # this.Method = "linear"; this.ExtrapolationMethod = "linear";
 
           case 1
-
             this.Method = tolower (varargin{num_input_count + 1});
             switch this.Method
               case {"linear", "natural"}
@@ -266,7 +260,6 @@ classdef scatteredInterpolant
 
           otherwise
             print_usage ();
-            #error ("scatteredInterpolant: invalid number of string inputs");
         endswitch
 
       endif
@@ -377,7 +370,6 @@ classdef scatteredInterpolant
 
                     elseif (num_query_elements != this.dimension)
                       error ("scatteredInterpolant: query points dimension must match interpolant");
-
                     endif
 
                     ## check for vectors to be equal length
@@ -389,7 +381,6 @@ classdef scatteredInterpolant
                     ## and nd arrays to be equal size
                     elseif ! isequal (cellfun (@size, S(1).subs, "UniformOutput", false){:})
                       error ("scatteredInterpolant: query point inputs must have equal size");
-
                     endif
 
                     ## set output size based on first input element
@@ -416,9 +407,12 @@ classdef scatteredInterpolant
 
                 v = NaN (rows(qpts), 1);
 
-                ##Perform interpolation on interior points according to method
+                ##Perform interpolation and extrapolation according to method
+                ## note - Matlab provides little indication of the underlying
+                ## linear extrapolation method, compatibility unsure.
                 switch this.Method
                   case "nearest"
+                    ## add an IF to even check extrap
                     switch this.ExtrapolationMethod
                       case "none"
                         nearest_pt_idx = dsearchn (this.Points, this.tri, qpts, NaN);
@@ -430,13 +424,24 @@ classdef scatteredInterpolant
                         v = this.Values(nearest_pt_idx);
 
                       case "linear"
+                        outside_qpt_idx = isnan (tsearchn (this.Points, this.tri, qpts));
+                        nearest_pt_idx = dsearchn (this.Points, this.tri, qpts);
+                        v(! outside_qpt_idx) = ...
+                          this.Values(nearest_pt_idx(! outside_qpt_idx));
+                        
+                        if any (outside_qpt_idx)
+                          error ('not finished')
+                        endif
+                        
+                      otherwise
+                        error ("scatteredInterpolant: invalid EXTRAPOLATIONMETHOD %s", this.ExtrapolationMethod);
                     endswitch
 
 
                   case "linear"
-                    keyboard
+
                     [tri_with_qpts, qpt_bary_coords] = tsearchn (this.Points, this.tri, qpts);
-                    inside_qpt_idx = !isnan (tri_with_qpts);
+                    inside_qpt_idx = ! isnan (tri_with_qpts);
 
                     qpt_vertices = this.tri(tri_with_qpts(inside_qpt_idx), :);
                     
@@ -447,7 +452,8 @@ classdef scatteredInterpolant
                       qpt_vertex_values =  this.Values(qpt_vertices);
                     endif
 
-                    v(inside_qpt_idx) = dot(qpt_vertex_values, qpt_bary_coords(inside_qpt_idx,:), 2);
+                    v(inside_qpt_idx) = dot (qpt_vertex_values, qpt_bary_coords(inside_qpt_idx,:), 2);
+
 
                     switch this.ExtrapolationMethod
                       case "none"
@@ -459,14 +465,122 @@ classdef scatteredInterpolant
                         v (outside_qpt_idx) = this.Values(nearest_pt_idx);
 
                       case "linear"
+                        outside_qpt_idx = isnan (tsearchn (this.Points, this.tri, qpts));
+
+                        ##check for external pts
+                        if any (outside_qpt_idx)
+
+                          ## find external triangulation points (repeats last pt)
+                          boundary_pts = convhull (this.Points);
+                          
+                          switch this.dimension
+                            case 2
+                              ## find visible boundary points for each qpt
+                              ## return cell array of col vectors for each qpt
+
+                              boundary_pts_vis = find_convex_vis_pts (this, this.Points(boundary_pts(1:end-1),:), qpts(outside_qpt_idx,:));
+                              boundary_pts_count = cellfun ('numel', boundary_pts_vis);
+
+                              all_boundary_vis_pts = sort (boundary_pts(unique (cell2mat (boundary_pts_vis'))'));
+
+                              [boundary_pts_vis_idx_to_all, ~] = arrayfun(@(A) find(all_boundary_pts_vis==boundary_pts_vis{A}),[1:numel(boundary_pts_vis)]', "UniformOutput",false);
+
+                              ## compute gradients at visible boundary pts
+                              ## find points connecting to each boundary pt 
+                              [boundary_tris ~] = arrayfun (@(A) find (this.tri==A), all_boundary_vis_pts, "UniformOutput", false);
+                              boundary_connections = cellfun (@(A) unique (this.tri(A,:)), boundary_tris, "UniformOutput", false);
+
+                              ## for each boundary point, make gradient system of equations
+                              boundary_gradeqns = arrayfun(@(A) [this.Points(boundary_connections{A}(boundary_connections{A}~=A),:) -  this.Points(all_boundary_vis_pts(A),:), ...
+                                  this.Values(boundary_connections{A}(boundary_connections{A}~=A)) - this.Values(all_boundary_vis_pts(A))], ...
+                                  [1:numel(all_boundary_vis_pts)]', "UniformOutput", false);
+
+                              ## solve overdefined eqn system for [dQdx, dQdy] at each boundary pt (each row n is for boundary pt n)
+                              boundary_pt_grads = cell2mat(cellfun (@(A) mldivide(A(:,1:end-1), A(:,end)), boundary_gradeqns', "UniformOutput",false))';
+
+                             ## use visible boundary point gradients to extrapolate value at each point
+                             ##do 2-point visibility
+                             v(outside_qpt_idx)(boundary_pts_count==2) 
+                             
+                             
+                             
+                             #do > 2-pt visibility
+                             
+                             
+                              ## split boundary into 'visibility regions' projected from boundary edges.
+
+                              
+                              ## perform linear extrapolation based on that region and visible gradients
+                              
+                            case 3  ##3D
+
+                          endswitch
+                        endif
+                      otherwise
+                        error ("scatteredInterpolant: invalid EXTRAPOLATIONMETHOD %s", this.ExtrapolationMethod);
                     endswitch
 
                   case "natural"
-                    error ("scatteredInterpolant: 'natural' interpolation method not yet implemented")
-                    switch this.ExtrapolationMethod
-                      case "none"
-                      case "nearest"
-                      case "linear"
+##                    error ("scatteredInterpolant: 'natural' interpolation method not yet implemented")
+                    
+                    ##currently requires matgeom package
+                     if (! pkg('list','matgeom'){1}.loaded)
+                       error ("scatteredInterpolant: 'NATURAL' method requires 'matgeom' package be installed and loaded");
+                     endif
+
+                    #identify point/tri associations and index of points inside convex hull
+                    [tri_with_qpts, qpt_bary_coords] = tsearchn (this.Points, this.tri, qpts);
+                    inside_qpt_idx = !isnan (tri_with_qpts);
+                    
+                    
+
+                    switch this.dimension
+                      case 2
+                        ## find circumcircles of delaunay tri (center & rad)
+                        ## which are also the voronoi facet intersection points.
+##                        [v_facet_pts, v_facet_list] = voronoin (this.Points);
+##                        tri_circ_radii = distancePoints (v_facet_pts(2:end,:), this.Points(this.tri(:,1),:), "diag");
+##                        ##cirs/spheres containing qp are it's nn points
+
+                        #find centers
+                        ## use circumcenters instead of voronoi to keep data
+                        ## matched to delaunay tri's.
+                        tri_circ_centers = circumCenter (this.Points(this.tri(:,1),:),this.Points(this.tri(:,2),:),this.Points(this.tri(:,3),:));
+                        tri_circ_radii = distancePoints (tri_circ_centers, this.Points(this.tri(:,1),:), "diag");
+                        
+                        ## find which circles cover which qpts. those qpts
+                        ## natural neighbors will be all of the points of
+                        ## the triangles in those circles.
+                        in_which_circle = distancePoints (tri_circ_centers, qpts(inside_qpt_idx,:)) <= tri_circ_radii; #rows are tri_circs, cols are for each qpt
+
+                        ## Get the interpolation points that are nat neighbors
+                        ## for each qpt. likely unequal lengths, so store in
+                        ## cells.
+                        qpt_nat_neighbors_pts =  arrayfun(...
+                          @(x) unique(this.tri(in_which_circle(:,x),:))(:),...
+                            [1:columns(in_which_circle)],"UniformOutput",false);
+                        
+                        
+                        
+
+
+
+                        switch this.ExtrapolationMethod
+                          case "none"
+                          case "nearest"
+                          case "linear"
+                          otherwise
+                            error ("scatteredInterpolant: invalid EXTRAPOLATIONMETHOD %s", this.ExtrapolationMethod);
+                        endswitch
+
+                      case 3
+                        switch this.ExtrapolationMethod
+                          case "none"
+                          case "nearest"
+                          case "linear"
+                          otherwise
+                            error ("scatteredInterpolant: invalid EXTRAPOLATIONMETHOD %s", this.ExtrapolationMethod);
+                        endswitch
                     endswitch
                 endswitch
 
@@ -699,20 +813,81 @@ classdef scatteredInterpolant
       this.enough_points = this.dimension && (rows (this.Points) > this.dimension);
     endfunction
 
-    function print_query_points_usage (this)
-      msg = sprintf(["scatteredInterpolant: invalid query points form. Correct usage is:\n\n", ...
-    "    Si = f(xi, yi)\n", ...
-    "    Si = f(xi, yi, zi)\n", ...
-    "    Si = f(Pi)\n", ...
-    "    Si = f({Xg, Yg})\n", ...
-    "    Si = f({Xg, Yg, Zg})\n\n", ...
-    "    See 'help scatteredInterpolant' for more information."]);
-      error (struct ("message", msg, "identifier", "", "stack", dbstack (1)));
+    function visible_points = find_convex_vis_pts (this, pts, viewpts)
+      %% pts = pointset given as 2d array, 1 pt per row. [x1, y1, (z1); x2, y2 (z2); etc]
+      %% pts already assumed to be a convex hull, in CCW order, without repetition.
+      %% viewpt = viewpoint origin (campera location) as row vector [x y (z)]
+
+      #recast multiple viewpts along dim3
+      viewpts = permute (viewpts, [3 2 1]);
+
+      % shift all points so that viewpt is at the origin (simplifies vector math)
+      pts = pts - viewpts;
+      [num_pts, dim, num_vpts] = size(pts);
+
+      % find point center of mass to set reference vector
+      pts_com = mean (pts, 1);
+
+      if dim == 2
+      % 2D calculate sin(theta) for each angle relative to C.O.M. vector
+      % as defined, in 2D, neg angles are CCW w.r.t. com vector, pos angle are CW
+      % ( sin(theta) = A x B / |A||B| )
+        pt_sin_thetas = (pts(:,1,:).*pts_com(:,2,:) - pts(:,2,:).*pts_com(:,1,:)) ...
+                          ./ (sqrt (sumsq (pts, 2) .* sumsq (pts_com, 2)));
+
+       [minangle, min_theta_idx] = min (pt_sin_thetas, [], 1);
+       [maxangle, max_theta_idx] = max (pt_sin_thetas, [], 1);
+
+       ## check for numerically colinear points. for a convex hull, max/min 
+       ## angle points can only have same angle as another point if
+       ## viewpoint-point vector is colinear with pt-pt edge. in that case, need
+       ## to select closer point, with shorter viewpoint-point distance.
+
+        [same_min_idx, same_min_vpt] = find (pt_sin_thetas == minangle);
+        [same_max_idx, same_max_vpt] = find (pt_sin_thetas == maxangle);
+        for idx = 1 : num_vpts
+          repeated = same_min_idx(same_min_vpt == idx);
+          if (numel (repeated) > 1)
+            [~, closer_min] = min (sumsq (pts(repeated,:,idx), 2));
+            min_theta_idx(:,:,idx) = repeated(closer_min);
+            minangle(:,:,idx) = pt_sin_thetas(min_theta_idx(:,:,idx));
+          endif
+
+          repeated = same_max_idx(same_max_vpt == idx);
+          if (numel (repeated) > 1)
+            [~, closer_max] = max (sumsq (pts(repeated,:,idx), 2));
+            max_theta_idx(:,:,idx) = repeated(closer_max);
+            maxangle(:,:,idx) = pt_sin_thetas(max_theta_idx(:,:,idx));
+          endif
+        endfor
+
+        ## visible points are all those between min&max index. points from
+        ## convex hull are in CCW order (cyclical), min-max angle always CW 
+        ## around viewpoint, which for external viewpoint is always CCW around
+        ## convex hull. so points go from [min_theta_idx : max_theta_idx],
+        ## including around the limits.
+
+        if any (min_theta_idx == max_theta_idx)
+          error ("only 1 visible point, shouldn't be possible for a 2D convex hull");
+        endif
+
+        simple_order = max_theta_idx > min_theta_idx;
+
+        visible_points = cell (num_vpts, 1);
+        visible_points (simple_order) = arrayfun (@colon, min_theta_idx(simple_order), max_theta_idx(simple_order), "UniformOutput", false);
+        visible_points (!simple_order) = arrayfun(@(A,B) sort([A:num_pts, 1:B]), min_theta_idx(!simple_order), max_theta_idx(!simple_order),"UniformOutput",false);
+
+      else
+        # 3D
+        error ("no 3D yet");
+      endif
     endfunction
 
     function print_usage (this)
+
       ## FIXME: overloading print_usage until bug ___ is fixed for classdefs.
-      ## can remove once that's fixed.
+      ## Can be removed and errors reverted back to 'print_usage ()' once that
+      ## is fixed.
       ident = "Octave:invalid-fun-call";
       msg = sprintf(["Invalid call to scatteredInterpolant.  Correct usage is:\n\n", ...
         "    -- F = scatteredInterpolant\n"...
@@ -729,6 +904,17 @@ classdef scatteredInterpolant
         "mailing list.\n"]);
 
       error (struct ("message", msg, "identifier", ident, "stack", dbstack (1)));
+    endfunction
+
+    function print_query_points_usage (this)
+      msg = sprintf(["scatteredInterpolant: invalid query points form. Correct usage is:\n\n", ...
+    "    -- Si = f(xi, yi)\n", ...
+    "    -- Si = f(xi, yi, zi)\n", ...
+    "    -- Si = f(Pi)\n", ...
+    "    -- Si = f({Xg, Yg})\n", ...
+    "    -- Si = f({Xg, Yg, Zg})\n\n", ...
+    "    See 'help scatteredInterpolant' for more information."]);
+      error (struct ("message", msg, "identifier", "", "stack", dbstack (1)));
     endfunction
 
   endmethods
