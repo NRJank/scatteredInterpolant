@@ -13,18 +13,18 @@
 
       % find point center of mass to set reference vector
       pts_com = mean (pts, 1);
-      
-      if dim == 2
+
+      if (dim == 2)
       % 2D calculate sin(theta) for each angle relative to C.O.M. vector
       % as defined, in 2D, neg angles are CCW w.r.t. com vector, pos angle are CW
       % ( sin(theta) = A x B / |A||B| )
         pt_sin_thetas = (pts(:,1,:).* pts_com(:,2,:) - pts(:,2,:) .* pts_com(:,1,:))./...
                           (sqrt (sumsq (pts, 2) .* sumsq (pts_com, 2)));
-                          
+
        [minangle, min_theta_idx] = min (pt_sin_thetas, [], 1);
        [maxangle, max_theta_idx] = max (pt_sin_thetas, [], 1);
-  
-       ## check for numerically colinear points. for a convex hull, max/min 
+
+       ## check for numerically colinear points. for a convex hull, max/min
        ## angle points can only have same angle as another point if
        ## viewpoint-point vector is colinear with pt-pt edge. in that case, need
        ## to select closer point, with shorter viewpoint-point distance.
@@ -49,12 +49,12 @@
 
 
         ## visible points are all those between min&max index. points from
-        ## convex hull are in CCW order (cyclical), min-max angle always CW 
+        ## convex hull are in CCW order (cyclical), min-max angle always CW
         ## around viewpoint, which for external viewpoint is always CCW around
         ## convex hull. so points go from [min_theta_idx : max_theta_idx],
         ## including around the limits.
 
-        if any (min_theta_idx == max_theta_idx)
+        if (any (min_theta_idx == max_theta_idx))
           error ("only 1 visible point, shouldn't be possible for a 2D convex hull");
         endif
 
